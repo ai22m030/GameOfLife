@@ -13,3 +13,9 @@ target_include_directories(GameOfLife PUBLIC OpenMP::OpenMP_CXX_INCLUDE_DIRS)
 if (OpenMP_CXX_FOUND)
     target_link_libraries(${PROJECT_NAME} PUBLIC OpenMP::OpenMP_CXX)
 endif ()
+
+find_package(Boost QUIET)
+
+if(Boost_FOUND)
+    include_directories(${Boost_INCLUDE_DIRS})
+endif ()

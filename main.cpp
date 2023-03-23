@@ -1,4 +1,5 @@
 #include <omp.h>
+#include <boost/dynamic_bitset.hpp>
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -30,14 +31,14 @@ public:
         char delimiter;
         inputFile >> rows >> delimiter >> columns;
         inputFile.ignore();
-        grid.resize(rows, std::vector<bool>(columns, false));
-        newGrid.resize(rows, std::vector<bool>(columns, false));
+        grid = std::make_unique<boost::dynamic_bitset<>>(rows * columns);
+        newGrid = std::make_unique<boost::dynamic_bitset<>>(rows * columns);
 
         for (int i = 0; i < rows; ++i) {
             std::string line;
             std::getline(inputFile, line);
             for (int j = 0; j < columns; ++j) {
-                grid[i][j] = (line[j] == 'x');
+                setGrid(grid, i, j, (line[j] == 'x'));
             }
         }
     }
@@ -47,14 +48,14 @@ public:
             for (int i = 0; i < rows; ++i) {
                 for (int j = 0; j < columns; ++j) {
                     int aliveNeighbors = countAliveNeighbors(i, j);
-                    if (grid[i][j]) {
-                        newGrid[i][j] = (aliveNeighbors == 2 || aliveNeighbors == 3);
+                    if (atGrid(grid, i, j)) {
+                        atGrid(newGrid, i, j) = (aliveNeighbors == 2 || aliveNeighbors == 3);
                     } else {
-                        newGrid[i][j] = (aliveNeighbors == 3);
+                        atGrid(newGrid, i, j) = (aliveNeighbors == 3);
                     }
                 }
             }
-            grid.swap(newGrid);
+            grid->swap(*newGrid);
         }
     }
 
@@ -66,16 +67,15 @@ public:
             for (int i = 0; i < rows; ++i) {
                 for (int j = 0; j < columns; ++j) {
                     int aliveNeighbors = countAliveNeighbors(i, j);
-                    if (grid[i][j]) {
-                        newGrid[i][j] = (aliveNeighbors == 2 || aliveNeighbors == 3);
+                    if (atGrid(grid, i, j)) {
+                        atGrid(newGrid, i, j) = (aliveNeighbors == 2 || aliveNeighbors == 3);
                     } else {
-                        newGrid[i][j] = (aliveNeighbors == 3);
+                        atGrid(newGrid, i, j) = (aliveNeighbors == 3);
                     }
                 }
             }
-
 #pragma omp barrier
-            grid.swap(newGrid);
+            grid->swap(*newGrid);
         }
     }
 
@@ -90,7 +90,7 @@ public:
         outputFile << rows << "," << columns << "\n";
         for (int r = 0; r < rows; ++r) {
             for (int c = 0; c < columns; ++c) {
-                outputFile << (grid[r][c] ? 'x' : '.');
+                outputFile << (atGrid(grid, r, c) ? 'x' : '.');
             }
             outputFile << "\n";
         }
@@ -100,8 +100,20 @@ public:
 
 private:
     int rows{}, columns{};
-    std::vector<std::vector<bool>> grid;
-    std::vector<std::vector<bool>> newGrid;
+    std::unique_ptr<boost::dynamic_bitset<>> grid;
+    std::unique_ptr<boost::dynamic_bitset<>> newGrid;
+
+    [[nodiscard]] bool atGrid(const std::unique_ptr<boost::dynamic_bitset<>> &g, int row, int col) const {
+        return (*g)[row * columns + col];
+    }
+
+    boost::dynamic_bitset<>::reference atGrid(std::unique_ptr<boost::dynamic_bitset<>> &g, int row, int col) const {
+        return (*g)[row * columns + col];
+    }
+
+    void setGrid(std::unique_ptr<boost::dynamic_bitset<>> &g, int row, int col, bool value) const {
+        (*g)[row * columns + col] = value;
+    }
 
     [[nodiscard]] int countAliveNeighbors(int row, int col) const {
         int count = 0;
@@ -110,7 +122,7 @@ private:
                 if (i == 0 && j == 0) continue;
                 int newRow = (row + i + rows) % rows;
                 int newCol = (col + j + columns) % columns;
-                count += grid[newRow][newCol];
+                count += atGrid(grid, newRow, newCol);
             }
         }
         return count;
