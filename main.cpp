@@ -10,22 +10,22 @@
 #include "Timing.h"
 
 
-std::string get_abs_path(const std::string &filepath) {
+std::string get_abs_path(const std::string &file) {
     try {
-        return std::filesystem::absolute(filepath).string();
+        return std::filesystem::absolute(file).string();
     } catch (const std::filesystem::filesystem_error &e) {
-        std::cerr << "Error obtaining absolute path for " << filepath << ": " << e.what() << std::endl;
-        return filepath;
+        std::cerr << "Error obtaining absolute path for " << file << ": " << e.what() << std::endl;
+        return file;
     }
 }
 
 class GameOfLife {
 public:
-    explicit GameOfLife(const std::string &inputFilename) {
-        std::string absInputPath = get_abs_path(inputFilename);
-        std::ifstream inputFile(absInputPath);
+    explicit GameOfLife(const std::string &filename) {
+        std::string path = get_abs_path(filename);
+        std::ifstream inputFile(path);
         if (!inputFile.is_open()) {
-            throw std::runtime_error("Cannot open input file: " + absInputPath);
+            throw std::runtime_error("Cannot open input file: " + path);
         }
 
         char delimiter;
@@ -59,18 +59,18 @@ public:
         }
     }
 
-    void runGenerationsParallel(int generations, int numThreads) {
-        omp_set_num_threads(numThreads);
+    void runGenerationsParallel(int generations, int threads) {
+        omp_set_num_threads(threads);
 
         for (int gen = 0; gen < generations; ++gen) {
 #pragma omp parallel for collapse(2) default(none) shared(grid, newGrid)
             for (int i = 0; i < rows; ++i) {
                 for (int j = 0; j < columns; ++j) {
-                    int aliveNeighbors = countAliveNeighbors(i, j);
+                    int alive = countAliveNeighbors(i, j);
                     if (atGrid(grid, i, j)) {
-                        atGrid(newGrid, i, j) = (aliveNeighbors == 2 || aliveNeighbors == 3);
+                        atGrid(newGrid, i, j) = (alive == 2 || alive == 3);
                     } else {
-                        atGrid(newGrid, i, j) = (aliveNeighbors == 3);
+                        atGrid(newGrid, i, j) = (alive == 3);
                     }
                 }
             }
@@ -79,12 +79,12 @@ public:
         }
     }
 
-    void save(const std::string &outputFilename) {
-        std::string absOutputPath = get_abs_path(outputFilename);
-        std::ofstream outputFile(absOutputPath);
+    void save(const std::string &filename) {
+        std::string path = get_abs_path(filename);
+        std::ofstream outputFile(path);
 
         if (!outputFile.is_open()) {
-            throw std::runtime_error("Cannot open output file: " + absOutputPath);
+            throw std::runtime_error("Cannot open output file: " + path);
         }
 
         outputFile << rows << "," << columns << "\n";
@@ -130,15 +130,15 @@ private:
 };
 
 int main(int argc, char *argv[]) {
-    std::string inputFilename, outputFilename, mode = "seq";
-    int generations = 1, numThreads = 1;
+    std::string input, output, mode = "seq";
+    int generations = 1, threads = 1;
     bool measure = false;
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--load") == 0) {
-            inputFilename = argv[++i];
+            input = argv[++i];
         } else if (strcmp(argv[i], "--save") == 0) {
-            outputFilename = argv[++i];
+            output = argv[++i];
         } else if (strcmp(argv[i], "--generations") == 0) {
             generations = std::stoi(argv[++i]);
         } else if (strcmp(argv[i], "--measure") == 0) {
@@ -146,7 +146,7 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "--mode") == 0) {
             mode = argv[++i];
         } else if (strcmp(argv[i], "--threads") == 0) {
-            numThreads = std::stoi(argv[++i]);
+            threads = std::stoi(argv[++i]);
         } else {
             std::cerr << "Unknown command line parameter: " << argv[i] << std::endl;
             return 1;
@@ -157,14 +157,14 @@ int main(int argc, char *argv[]) {
         Timing *timing = Timing::getInstance();
 
         timing->startSetup();
-        GameOfLife game(inputFilename);
+        GameOfLife game(input);
         timing->stopSetup();
 
         timing->startComputation();
         if (mode == "seq") {
             game.runGenerations(generations);
         } else if (mode == "omp") {
-            game.runGenerationsParallel(generations, numThreads);
+            game.runGenerationsParallel(generations, threads);
         } else {
             std::cerr << "Invalid mode: " << mode << std::endl;
             return 1;
@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
         timing->stopComputation();
 
         timing->startFinalization();
-        game.save(outputFilename);
+        game.save(output);
         timing->stopFinalization();
 
         if (measure) {
