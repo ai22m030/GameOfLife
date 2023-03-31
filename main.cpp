@@ -2,7 +2,6 @@
 #include <boost/dynamic_bitset.hpp>
 #include <iostream>
 #include <fstream>
-#include <vector>
 #include <string>
 #include <stdexcept>
 #include <cstring>
@@ -24,6 +23,7 @@ public:
     explicit GameOfLife(const std::string &filename) {
         std::string path = get_abs_path(filename);
         std::ifstream inputFile(path);
+
         if (!inputFile.is_open()) {
             throw std::runtime_error("Cannot open input file: " + path);
         }
@@ -31,15 +31,17 @@ public:
         char delimiter;
         inputFile >> rows >> delimiter >> columns;
         inputFile.ignore();
-        grid = std::make_unique<boost::dynamic_bitset<>>(rows * columns);
-        newGrid = std::make_unique<boost::dynamic_bitset<>>(rows * columns);
+
+        grid = boost::dynamic_bitset<>(rows * columns);
+        newGrid = boost::dynamic_bitset<>(rows * columns);
 
         for (int i = 0; i < rows; ++i) {
-            std::string line;
-            std::getline(inputFile, line);
             for (int j = 0; j < columns; ++j) {
-                setGrid(grid, i, j, (line[j] == 'x'));
+                char ch;
+                inputFile.get(ch);
+                setGrid(grid, i, j, (ch == 'x'));
             }
+            inputFile.ignore(); // ignore the newline character
         }
     }
 
@@ -47,15 +49,15 @@ public:
         for (int gen = 0; gen < generations; ++gen) {
             for (int i = 0; i < rows; ++i) {
                 for (int j = 0; j < columns; ++j) {
-                    int aliveNeighbors = countAliveNeighbors(i, j);
+                    int alive = countAliveNeighbors(i, j);
                     if (atGrid(grid, i, j)) {
-                        atGrid(newGrid, i, j) = (aliveNeighbors == 2 || aliveNeighbors == 3);
+                        setGrid(newGrid, i, j, (alive == 2 || alive == 3));
                     } else {
-                        atGrid(newGrid, i, j) = (aliveNeighbors == 3);
+                        setGrid(newGrid, i, j, (alive == 3));
                     }
                 }
             }
-            grid->swap(*newGrid);
+            grid.swap(newGrid);
         }
     }
 
@@ -68,14 +70,14 @@ public:
                 for (int j = 0; j < columns; ++j) {
                     int alive = countAliveNeighbors(i, j);
                     if (atGrid(grid, i, j)) {
-                        atGrid(newGrid, i, j) = (alive == 2 || alive == 3);
+                        setGrid(newGrid, i, j, (alive == 2 || alive == 3));
                     } else {
-                        atGrid(newGrid, i, j) = (alive == 3);
+                        setGrid(newGrid, i, j, (alive == 3));
                     }
                 }
             }
 #pragma omp barrier
-            grid->swap(*newGrid);
+            grid.swap(newGrid);
         }
     }
 
@@ -100,19 +102,15 @@ public:
 
 private:
     int rows{}, columns{};
-    std::unique_ptr<boost::dynamic_bitset<>> grid;
-    std::unique_ptr<boost::dynamic_bitset<>> newGrid;
+    boost::dynamic_bitset<> grid;
+    boost::dynamic_bitset<> newGrid;
 
-    [[nodiscard]] bool atGrid(const std::unique_ptr<boost::dynamic_bitset<>> &g, int row, int col) const {
-        return (*g)[row * columns + col];
+    [[nodiscard]] bool atGrid(const boost::dynamic_bitset<> &g, int row, int col) const {
+        return g[row * columns + col];
     }
 
-    boost::dynamic_bitset<>::reference atGrid(std::unique_ptr<boost::dynamic_bitset<>> &g, int row, int col) const {
-        return (*g)[row * columns + col];
-    }
-
-    void setGrid(std::unique_ptr<boost::dynamic_bitset<>> &g, int row, int col, bool value) const {
-        (*g)[row * columns + col] = value;
+    void setGrid(boost::dynamic_bitset<> &g, int row, int col, bool value) const {
+        g[row * columns + col] = value;
     }
 
     [[nodiscard]] int countAliveNeighbors(int row, int col) const {
@@ -120,13 +118,21 @@ private:
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
                 if (i == 0 && j == 0) continue;
-                int newRow = (row + i + rows) % rows;
-                int newCol = (col + j + columns) % columns;
+                int newRow = row + i;
+                int newCol = col + j;
+
+                if (newRow < 0) newRow += rows;
+                else if (newRow >= rows) newRow -= rows;
+
+                if (newCol < 0) newCol += columns;
+                else if (newCol >= columns) newCol -= columns;
+
                 count += atGrid(grid, newRow, newCol);
             }
         }
         return count;
     }
+
 };
 
 int main(int argc, char *argv[]) {
